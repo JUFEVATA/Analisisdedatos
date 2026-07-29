@@ -40,6 +40,250 @@ st.set_page_config(
     layout="wide",
 )
 
+# ---------------------------------------------------------------------
+# Tema visual e interactividad
+# ---------------------------------------------------------------------
+with st.sidebar:
+    st.markdown("### Apariencia")
+    tema_visual = st.selectbox(
+        "Paleta del dashboard",
+        ["Azul tecnológico", "Verde movilidad", "Morado urbano"],
+        index=0,
+        help="Cambia los colores del dashboard sin alterar los datos.",
+    )
+
+TEMAS = {
+    "Azul tecnológico": {
+        "primario": "#2563EB",
+        "secundario": "#06B6D4",
+        "acento": "#F59E0B",
+        "fondo": "#F3F7FC",
+        "sidebar": "#0F172A",
+        "suave": "#EFF6FF",
+        "paleta": ["#2563EB", "#06B6D4", "#14B8A6", "#F59E0B", "#8B5CF6", "#EF4444", "#84CC16", "#F97316"],
+    },
+    "Verde movilidad": {
+        "primario": "#059669",
+        "secundario": "#14B8A6",
+        "acento": "#F59E0B",
+        "fondo": "#F2F8F5",
+        "sidebar": "#12352C",
+        "suave": "#ECFDF5",
+        "paleta": ["#059669", "#14B8A6", "#84CC16", "#F59E0B", "#0284C7", "#8B5CF6", "#EF4444", "#F97316"],
+    },
+    "Morado urbano": {
+        "primario": "#7C3AED",
+        "secundario": "#EC4899",
+        "acento": "#F59E0B",
+        "fondo": "#F8F5FC",
+        "sidebar": "#241238",
+        "suave": "#F3E8FF",
+        "paleta": ["#7C3AED", "#EC4899", "#8B5CF6", "#06B6D4", "#F59E0B", "#14B8A6", "#EF4444", "#84CC16"],
+    },
+}
+
+tema = TEMAS[tema_visual]
+px.defaults.template = "plotly_white"
+px.defaults.color_discrete_sequence = tema["paleta"]
+
+st.markdown(
+    f"""
+    <style>
+        :root {{
+            --fondo: {tema['fondo']};
+            --superficie: #FFFFFF;
+            --texto: #172033;
+            --texto-secundario: #64748B;
+            --borde: #E2E8F0;
+            --primario: {tema['primario']};
+            --secundario: {tema['secundario']};
+            --acento: {tema['acento']};
+            --primario-suave: {tema['suave']};
+            --sidebar: {tema['sidebar']};
+            --sombra: 0 10px 28px rgba(15, 23, 42, 0.08);
+        }}
+
+        .stApp {{
+            background:
+                radial-gradient(circle at top right, {tema['suave']} 0, transparent 28rem),
+                var(--fondo);
+        }}
+
+        .block-container {{
+            max-width: 1500px;
+            padding-top: 2rem;
+            padding-bottom: 3rem;
+        }}
+
+        h1, h2, h3 {{
+            color: var(--texto);
+            letter-spacing: -0.025em;
+        }}
+
+        h1 {{
+            font-size: clamp(2rem, 3vw, 3rem) !important;
+            font-weight: 850 !important;
+            margin-bottom: 0.15rem !important;
+            background: linear-gradient(90deg, var(--primario), var(--secundario));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }}
+
+        [data-testid="stCaptionContainer"] {{
+            color: var(--texto-secundario);
+            font-size: 1rem;
+            margin-bottom: 1.25rem;
+        }}
+
+        [data-testid="stSidebar"] {{
+            background: linear-gradient(180deg, var(--sidebar), #0B1120);
+            border-right: 1px solid rgba(255, 255, 255, 0.08);
+        }}
+
+        [data-testid="stSidebar"] * {{ color: #E2E8F0; }}
+        [data-testid="stSidebar"] h2,
+        [data-testid="stSidebar"] h3 {{ color: #FFFFFF; }}
+
+        [data-testid="stSidebar"] [data-baseweb="select"] > div,
+        [data-testid="stSidebar"] [data-baseweb="input"] > div,
+        [data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] {{
+            background: rgba(255, 255, 255, 0.08);
+            border-color: rgba(255, 255, 255, 0.18);
+            border-radius: 12px;
+            transition: border-color .2s ease, background .2s ease;
+        }}
+
+        [data-testid="stSidebar"] [data-baseweb="select"] > div:hover,
+        [data-testid="stSidebar"] [data-baseweb="input"] > div:hover {{
+            border-color: var(--secundario);
+            background: rgba(255, 255, 255, 0.12);
+        }}
+
+        [data-testid="stMetric"] {{
+            position: relative;
+            overflow: hidden;
+            background: rgba(255,255,255,.94);
+            border: 1px solid var(--borde);
+            border-radius: 18px;
+            padding: 1.05rem 1.15rem;
+            box-shadow: var(--sombra);
+            min-height: 122px;
+            transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease;
+        }}
+
+        [data-testid="stMetric"]::before {{
+            content: "";
+            position: absolute;
+            inset: 0 auto 0 0;
+            width: 5px;
+            background: linear-gradient(180deg, var(--primario), var(--secundario));
+        }}
+
+        [data-testid="stMetric"]:hover {{
+            transform: translateY(-4px);
+            border-color: var(--primario);
+            box-shadow: 0 16px 35px rgba(15, 23, 42, .14);
+        }}
+
+        [data-testid="stMetricLabel"] {{
+            color: var(--texto-secundario);
+            font-weight: 650;
+        }}
+
+        [data-testid="stMetricValue"] {{
+            color: var(--texto);
+            font-size: clamp(1.45rem, 2vw, 2rem);
+            font-weight: 850;
+        }}
+
+        [data-testid="stTabs"] [data-baseweb="tab-list"] {{
+            gap: .5rem;
+            background: rgba(255,255,255,.92);
+            border: 1px solid var(--borde);
+            border-radius: 16px;
+            padding: .4rem;
+            box-shadow: 0 5px 16px rgba(15,23,42,.06);
+            position: sticky;
+            top: .5rem;
+            z-index: 10;
+            backdrop-filter: blur(10px);
+        }}
+
+        [data-testid="stTabs"] [data-baseweb="tab"] {{
+            height: 44px;
+            border-radius: 11px;
+            padding: 0 1rem;
+            font-weight: 700;
+            color: var(--texto-secundario);
+            transition: all .2s ease;
+        }}
+
+        [data-testid="stTabs"] [data-baseweb="tab"]:hover {{
+            color: var(--primario);
+            background: var(--primario-suave);
+        }}
+
+        [data-testid="stTabs"] [aria-selected="true"] {{
+            background: linear-gradient(135deg, var(--primario), var(--secundario));
+            color: #FFFFFF;
+            box-shadow: 0 6px 16px color-mix(in srgb, var(--primario) 28%, transparent);
+        }}
+
+        [data-testid="stTabs"] [data-baseweb="tab-highlight"] {{ display: none; }}
+
+        [data-testid="stPlotlyChart"] {{
+            background: rgba(255,255,255,.95);
+            border: 1px solid var(--borde);
+            border-radius: 18px;
+            padding: .35rem;
+            box-shadow: var(--sombra);
+            overflow: hidden;
+            transition: transform .2s ease, box-shadow .2s ease;
+        }}
+
+        [data-testid="stPlotlyChart"]:hover {{
+            transform: translateY(-2px);
+            box-shadow: 0 16px 34px rgba(15,23,42,.12);
+        }}
+
+        [data-testid="stDataFrame"], [data-testid="stExpander"] {{
+            background: rgba(255,255,255,.95);
+            border: 1px solid var(--borde);
+            border-radius: 16px;
+            box-shadow: var(--sombra);
+            overflow: hidden;
+        }}
+
+        [data-testid="stAlert"] {{ border-radius: 14px; }}
+
+        .stDownloadButton > button {{
+            width: 100%;
+            border: none;
+            border-radius: 13px;
+            background: linear-gradient(135deg, var(--primario), var(--secundario));
+            color: #FFFFFF;
+            font-weight: 750;
+            padding: .75rem 1rem;
+            transition: transform .18s ease, box-shadow .18s ease;
+        }}
+
+        .stDownloadButton > button:hover {{
+            color: #FFFFFF;
+            transform: translateY(-2px);
+            box-shadow: 0 10px 22px color-mix(in srgb, var(--primario) 35%, transparent);
+        }}
+
+        div[data-testid="column"] {{ gap: .75rem; }}
+
+        @media (max-width: 900px) {{
+            .block-container {{ padding-left: 1rem; padding-right: 1rem; }}
+            [data-testid="stMetric"] {{ min-height: 104px; }}
+        }}
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 st.title("Dashboard de movilidad urbana")
 st.caption(
     "Análisis de viajes, ingresos, operación, satisfacción e incidentes."
@@ -81,6 +325,40 @@ def obtener_archivo_local() -> Path | None:
 
 def grafico_sin_datos(mensaje: str = "No hay datos para este gráfico.") -> None:
     st.info(mensaje)
+
+
+def mostrar_grafico(figura, **kwargs) -> None:
+    """Aplica una configuración interactiva uniforme a los gráficos."""
+    figura.update_layout(
+        font={"family": "Arial, sans-serif", "color": "#334155"},
+        title={"font": {"size": 19, "color": "#172033"}, "x": 0.02},
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        hoverlabel={"bgcolor": "#0F172A", "font_color": "#FFFFFF"},
+        margin={"l": 35, "r": 25, "t": 65, "b": 45},
+        transition={"duration": 350, "easing": "cubic-in-out"},
+    )
+    figura.update_xaxes(showgrid=True, gridcolor="rgba(148,163,184,.16)", zeroline=False)
+    figura.update_yaxes(showgrid=True, gridcolor="rgba(148,163,184,.16)", zeroline=False)
+    st.plotly_chart(
+        figura,
+        use_container_width=True,
+        theme=None,
+        config={
+            "displaylogo": False,
+            "responsive": True,
+            "scrollZoom": True,
+            "modeBarButtonsToRemove": ["lasso2d"],
+            "toImageButtonOptions": {
+                "format": "png",
+                "filename": "grafico_movilidad",
+                "height": 700,
+                "width": 1200,
+                "scale": 2,
+            },
+        },
+        **kwargs,
+    )
 
 
 # ---------------------------------------------------------------------
@@ -260,7 +538,7 @@ with tab_general:
             text_auto=True,
         )
         figura_ciudad.update_layout(xaxis_title="", yaxis_title="Viajes")
-        st.plotly_chart(figura_ciudad, use_container_width=True)
+        mostrar_grafico(figura_ciudad)
 
     with columna_2:
         resumen_ingresos_ciudad = generar_resumen(
@@ -281,7 +559,7 @@ with tab_general:
             xaxis_title="",
             yaxis_title="Ingresos",
         )
-        st.plotly_chart(figura_ingresos, use_container_width=True)
+        mostrar_grafico(figura_ingresos)
 
     columna_3, columna_4 = st.columns(2)
 
@@ -298,7 +576,7 @@ with tab_general:
             hole=0.45,
             title="Participación por tipo de vehículo",
         )
-        st.plotly_chart(figura_categoria, use_container_width=True)
+        mostrar_grafico(figura_categoria)
 
     with columna_4:
         resumen_pago = generar_resumen(
@@ -319,7 +597,7 @@ with tab_general:
             yaxis_title="",
             yaxis={"categoryorder": "total ascending"},
         )
-        st.plotly_chart(figura_pago, use_container_width=True)
+        mostrar_grafico(figura_pago)
 
     columna_5, columna_6 = st.columns(2)
 
@@ -334,7 +612,7 @@ with tab_general:
             xaxis_title="Edad",
             yaxis_title="Frecuencia",
         )
-        st.plotly_chart(figura_edad, use_container_width=True)
+        mostrar_grafico(figura_edad)
 
     with columna_6:
         resumen_satisfaccion = (
@@ -355,7 +633,7 @@ with tab_general:
             xaxis_title="Satisfacción",
             yaxis_title="Viajes",
         )
-        st.plotly_chart(figura_satisfaccion, use_container_width=True)
+        mostrar_grafico(figura_satisfaccion)
 
 
 with tab_tiempo:
@@ -383,7 +661,7 @@ with tab_tiempo:
         xaxis_title="Fecha",
         yaxis_title="Viajes",
     )
-    st.plotly_chart(figura_tendencia, use_container_width=True)
+    mostrar_grafico(figura_tendencia)
 
     columna_1, columna_2 = st.columns(2)
 
@@ -411,7 +689,7 @@ with tab_tiempo:
             xaxis_title="",
             yaxis_title="Ingresos",
         )
-        st.plotly_chart(figura_mes, use_container_width=True)
+        mostrar_grafico(figura_mes)
 
     with columna_2:
         resumen_hora = (
@@ -431,7 +709,7 @@ with tab_tiempo:
             xaxis_title="Hora",
             yaxis_title="Viajes",
         )
-        st.plotly_chart(figura_hora, use_container_width=True)
+        mostrar_grafico(figura_hora)
 
     tabla_calor = (
         df_filtrado.groupby(
@@ -455,7 +733,7 @@ with tab_tiempo:
         },
         title="Demanda por día y hora",
     )
-    st.plotly_chart(figura_calor, use_container_width=True)
+    mostrar_grafico(figura_calor)
 
 
 with tab_operacion:
@@ -479,7 +757,7 @@ with tab_operacion:
             xaxis_title="Viajes",
             yaxis_title="",
         )
-        st.plotly_chart(figura_origen, use_container_width=True)
+        mostrar_grafico(figura_origen)
 
     with columna_2:
         resumen_rutas = generar_resumen(
@@ -499,7 +777,7 @@ with tab_operacion:
             xaxis_title="Viajes",
             yaxis_title="",
         )
-        st.plotly_chart(figura_rutas, use_container_width=True)
+        mostrar_grafico(figura_rutas)
 
     figura_relacion = px.scatter(
         df_filtrado,
@@ -520,7 +798,7 @@ with tab_operacion:
         xaxis_title="Distancia (km)",
         yaxis_title="Duración (min)",
     )
-    st.plotly_chart(figura_relacion, use_container_width=True)
+    mostrar_grafico(figura_relacion)
 
     columna_3, columna_4 = st.columns(2)
 
@@ -552,7 +830,7 @@ with tab_operacion:
             xaxis_title="",
             yaxis_title="Tasa de incidentes (%)",
         )
-        st.plotly_chart(figura_incidentes_clima, use_container_width=True)
+        mostrar_grafico(figura_incidentes_clima)
 
     with columna_4:
         resumen_incidentes_categoria = (
@@ -582,7 +860,7 @@ with tab_operacion:
             xaxis_title="",
             yaxis_title="Tasa de incidentes (%)",
         )
-        st.plotly_chart(figura_incidentes_categoria, use_container_width=True)
+        mostrar_grafico(figura_incidentes_categoria)
 
     columna_5, columna_6 = st.columns(2)
 
@@ -597,7 +875,7 @@ with tab_operacion:
             xaxis_title="",
             yaxis_title="Temperatura (°C)",
         )
-        st.plotly_chart(figura_temperatura, use_container_width=True)
+        mostrar_grafico(figura_temperatura)
 
     with columna_6:
         resumen_satisfaccion_ciudad = generar_resumen(
@@ -619,10 +897,7 @@ with tab_operacion:
             yaxis_title="Satisfacción promedio",
             yaxis_range=[0, 5],
         )
-        st.plotly_chart(
-            figura_satisfaccion_ciudad,
-            use_container_width=True,
-        )
+        mostrar_grafico(figura_satisfaccion_ciudad)
 
 
 with tab_calidad:
