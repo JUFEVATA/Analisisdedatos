@@ -1,979 +1,533 @@
 from __future__ import annotations
 
-from pathlib import Path
+import io
+import time
+from dataclasses import dataclass
+from typing import Any
 
 import pandas as pd
-import plotly.express as px
+import requests
 import streamlit as st
 
-from procesamiento import (
-    COL_CATEGORIA,
-    COL_CIUDAD,
-    COL_CLIMA,
-    COL_DESTINO,
-    COL_DISTANCIA,
-    COL_DURACION,
-    COL_EDAD,
-    COL_FECHA,
-    COL_INCIDENTE,
-    COL_METODO_PAGO,
-    COL_ORIGEN,
-    COL_SATISFACCION,
-    COL_TEMPERATURA,
-    COL_TIPO_USUARIO,
-    COL_USUARIO,
-    COL_VALOR,
-    calcular_indicadores,
-    diagnosticar_datos,
-    filtrar_datos,
-    generar_resumen,
-    procesar_datos,
-)
 
-
-# ---------------------------------------------------------------------
-# Configuración general
-# ---------------------------------------------------------------------
+# =========================================================
+# CONFIGURACIÓN GENERAL
+# =========================================================
 st.set_page_config(
-    page_title="Dashboard de movilidad",
-    page_icon="🚲",
+    page_title="Predicción con DataRobot",
+    page_icon="🤖",
     layout="wide",
+    initial_sidebar_state="expanded",
 )
 
-# ---------------------------------------------------------------------
-# Tema visual e interactividad
-# ---------------------------------------------------------------------
-with st.sidebar:
-    st.markdown("### Apariencia")
-    tema_visual = st.selectbox(
-        "Paleta del dashboard",
-        ["Azul tecnológico", "Verde movilidad", "Morado urbano"],
-        index=0,
-        help="Cambia los colores del dashboard sin alterar los datos.",
-    )
+POLL_INTERVAL_SECONDS = 3
+DEFAULT_TIMEOUT_SECONDS = 600
 
-TEMAS = {
-    "Azul tecnológico": {
-        "primario": "#2563EB",
-        "secundario": "#06B6D4",
-        "acento": "#F59E0B",
-        "fondo": "#F3F7FC",
-        "sidebar": "#0F172A",
-        "suave": "#EFF6FF",
-        "paleta": ["#2563EB", "#06B6D4", "#14B8A6", "#F59E0B", "#8B5CF6", "#EF4444", "#84CC16", "#F97316"],
-    },
-    "Verde movilidad": {
-        "primario": "#059669",
-        "secundario": "#14B8A6",
-        "acento": "#F59E0B",
-        "fondo": "#F2F8F5",
-        "sidebar": "#12352C",
-        "suave": "#ECFDF5",
-        "paleta": ["#059669", "#14B8A6", "#84CC16", "#F59E0B", "#0284C7", "#8B5CF6", "#EF4444", "#F97316"],
-    },
-    "Morado urbano": {
-        "primario": "#7C3AED",
-        "secundario": "#EC4899",
-        "acento": "#F59E0B",
-        "fondo": "#F8F5FC",
-        "sidebar": "#241238",
-        "suave": "#F3E8FF",
-        "paleta": ["#7C3AED", "#EC4899", "#8B5CF6", "#06B6D4", "#F59E0B", "#14B8A6", "#EF4444", "#84CC16"],
-    },
-}
 
-tema = TEMAS[tema_visual]
-px.defaults.template = "plotly_white"
-px.defaults.color_discrete_sequence = tema["paleta"]
-
+# =========================================================
+# ESTILOS
+# =========================================================
 st.markdown(
-    f"""
+    """
     <style>
-        :root {{
-            --fondo: {tema['fondo']};
-            --superficie: #FFFFFF;
-            --texto: #172033;
-            --texto-secundario: #64748B;
-            --borde: #E2E8F0;
-            --primario: {tema['primario']};
-            --secundario: {tema['secundario']};
-            --acento: {tema['acento']};
-            --primario-suave: {tema['suave']};
-            --sidebar: {tema['sidebar']};
-            --sombra: 0 10px 28px rgba(15, 23, 42, 0.08);
-        }}
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
-        .stApp {{
+        html, body, [class*="css"] {
+            font-family: 'Inter', sans-serif;
+        }
+
+        .stApp {
             background:
-                radial-gradient(circle at top right, {tema['suave']} 0, transparent 28rem),
-                var(--fondo);
-        }}
+                radial-gradient(circle at top left, rgba(59, 130, 246, 0.14), transparent 30%),
+                radial-gradient(circle at top right, rgba(139, 92, 246, 0.12), transparent 28%),
+                #f7f9fc;
+        }
 
-        .block-container {{
-            max-width: 1500px;
+        .main .block-container {
+            max-width: 1200px;
             padding-top: 2rem;
             padding-bottom: 3rem;
-        }}
+        }
 
-        h1, h2, h3 {{
-            color: var(--texto);
-            letter-spacing: -0.025em;
-        }}
+        .hero {
+            padding: 2.2rem;
+            border-radius: 24px;
+            background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 55%, #6d28d9 100%);
+            color: white;
+            box-shadow: 0 18px 45px rgba(15, 23, 42, 0.18);
+            margin-bottom: 1.5rem;
+        }
 
-        h1 {{
-            font-size: clamp(2rem, 3vw, 3rem) !important;
-            font-weight: 850 !important;
-            margin-bottom: 0.15rem !important;
-            background: linear-gradient(90deg, var(--primario), var(--secundario));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }}
+        .hero h1 {
+            font-size: 2.25rem;
+            line-height: 1.1;
+            margin: 0 0 0.7rem 0;
+            font-weight: 800;
+        }
 
-        [data-testid="stCaptionContainer"] {{
-            color: var(--texto-secundario);
-            font-size: 1rem;
-            margin-bottom: 1.25rem;
-        }}
+        .hero p {
+            margin: 0;
+            color: rgba(255,255,255,0.84);
+            font-size: 1.02rem;
+            max-width: 760px;
+        }
 
-        [data-testid="stSidebar"] {{
-            background: linear-gradient(180deg, var(--sidebar), #0B1120);
-            border-right: 1px solid rgba(255, 255, 255, 0.08);
-        }}
-
-        [data-testid="stSidebar"] * {{ color: #E2E8F0; }}
-        [data-testid="stSidebar"] h2,
-        [data-testid="stSidebar"] h3 {{ color: #FFFFFF; }}
-
-        [data-testid="stSidebar"] [data-baseweb="select"] > div,
-        [data-testid="stSidebar"] [data-baseweb="input"] > div,
-        [data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] {{
-            background: rgba(255, 255, 255, 0.08);
-            border-color: rgba(255, 255, 255, 0.18);
-            border-radius: 12px;
-            transition: border-color .2s ease, background .2s ease;
-        }}
-
-        [data-testid="stSidebar"] [data-baseweb="select"] > div:hover,
-        [data-testid="stSidebar"] [data-baseweb="input"] > div:hover {{
-            border-color: var(--secundario);
-            background: rgba(255, 255, 255, 0.12);
-        }}
-
-        [data-testid="stMetric"] {{
-            position: relative;
-            overflow: hidden;
-            background: rgba(255,255,255,.94);
-            border: 1px solid var(--borde);
+        .info-card {
+            background: rgba(255,255,255,0.92);
+            border: 1px solid rgba(148,163,184,0.25);
             border-radius: 18px;
-            padding: 1.05rem 1.15rem;
-            box-shadow: var(--sombra);
-            min-height: 122px;
-            transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease;
-        }}
+            padding: 1.15rem 1.25rem;
+            box-shadow: 0 8px 30px rgba(15,23,42,0.06);
+            height: 100%;
+        }
 
-        [data-testid="stMetric"]::before {{
-            content: "";
-            position: absolute;
-            inset: 0 auto 0 0;
-            width: 5px;
-            background: linear-gradient(180deg, var(--primario), var(--secundario));
-        }}
-
-        [data-testid="stMetric"]:hover {{
-            transform: translateY(-4px);
-            border-color: var(--primario);
-            box-shadow: 0 16px 35px rgba(15, 23, 42, .14);
-        }}
-
-        [data-testid="stMetricLabel"] {{
-            color: var(--texto-secundario);
-            font-weight: 650;
-        }}
-
-        [data-testid="stMetricValue"] {{
-            color: var(--texto);
-            font-size: clamp(1.45rem, 2vw, 2rem);
-            font-weight: 850;
-        }}
-
-        [data-testid="stTabs"] [data-baseweb="tab-list"] {{
-            gap: .5rem;
-            background: rgba(255,255,255,.92);
-            border: 1px solid var(--borde);
-            border-radius: 16px;
-            padding: .4rem;
-            box-shadow: 0 5px 16px rgba(15,23,42,.06);
-            position: sticky;
-            top: .5rem;
-            z-index: 10;
-            backdrop-filter: blur(10px);
-        }}
-
-        [data-testid="stTabs"] [data-baseweb="tab"] {{
-            height: 44px;
-            border-radius: 11px;
-            padding: 0 1rem;
+        .info-label {
+            color: #64748b;
+            font-size: 0.78rem;
             font-weight: 700;
-            color: var(--texto-secundario);
-            transition: all .2s ease;
-        }}
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+        }
 
-        [data-testid="stTabs"] [data-baseweb="tab"]:hover {{
-            color: var(--primario);
-            background: var(--primario-suave);
-        }}
+        .info-value {
+            color: #0f172a;
+            font-size: 1.4rem;
+            font-weight: 800;
+            margin-top: 0.25rem;
+        }
 
-        [data-testid="stTabs"] [aria-selected="true"] {{
-            background: linear-gradient(135deg, var(--primario), var(--secundario));
-            color: #FFFFFF;
-            box-shadow: 0 6px 16px color-mix(in srgb, var(--primario) 28%, transparent);
-        }}
-
-        [data-testid="stTabs"] [data-baseweb="tab-highlight"] {{ display: none; }}
-
-        [data-testid="stPlotlyChart"] {{
-            background: rgba(255,255,255,.95);
-            border: 1px solid var(--borde);
+        div[data-testid="stFileUploader"] {
+            background: rgba(255,255,255,0.88);
+            border: 1px dashed #93c5fd;
             border-radius: 18px;
-            padding: .35rem;
-            box-shadow: var(--sombra);
-            overflow: hidden;
-            transition: transform .2s ease, box-shadow .2s ease;
-        }}
+            padding: 0.5rem;
+        }
 
-        [data-testid="stPlotlyChart"]:hover {{
-            transform: translateY(-2px);
-            box-shadow: 0 16px 34px rgba(15,23,42,.12);
-        }}
-
-        [data-testid="stDataFrame"], [data-testid="stExpander"] {{
-            background: rgba(255,255,255,.95);
-            border: 1px solid var(--borde);
+        div[data-testid="stDataFrame"] {
             border-radius: 16px;
-            box-shadow: var(--sombra);
             overflow: hidden;
-        }}
+            border: 1px solid #e2e8f0;
+        }
 
-        [data-testid="stAlert"] {{ border-radius: 14px; }}
-
-        .stDownloadButton > button {{
-            width: 100%;
+        .stButton > button,
+        .stDownloadButton > button {
             border: none;
-            border-radius: 13px;
-            background: linear-gradient(135deg, var(--primario), var(--secundario));
-            color: #FFFFFF;
-            font-weight: 750;
-            padding: .75rem 1rem;
-            transition: transform .18s ease, box-shadow .18s ease;
-        }}
+            border-radius: 12px;
+            font-weight: 700;
+            min-height: 46px;
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+        }
 
-        .stDownloadButton > button:hover {{
-            color: #FFFFFF;
-            transform: translateY(-2px);
-            box-shadow: 0 10px 22px color-mix(in srgb, var(--primario) 35%, transparent);
-        }}
+        .stButton > button {
+            background: linear-gradient(135deg, #2563eb, #7c3aed);
+            color: white;
+            box-shadow: 0 8px 20px rgba(37,99,235,0.22);
+        }
 
-        div[data-testid="column"] {{ gap: .75rem; }}
+        .stButton > button:hover,
+        .stDownloadButton > button:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 10px 24px rgba(37,99,235,0.28);
+        }
 
-        @media (max-width: 900px) {{
-            .block-container {{ padding-left: 1rem; padding-right: 1rem; }}
-            [data-testid="stMetric"] {{ min-height: 104px; }}
-        }}
+        section[data-testid="stSidebar"] {
+            background: #0f172a;
+        }
+
+        section[data-testid="stSidebar"] * {
+            color: #e2e8f0;
+        }
+
+        section[data-testid="stSidebar"] input {
+            color: #0f172a !important;
+        }
+
+        .small-note {
+            color: #64748b;
+            font-size: 0.88rem;
+        }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-st.title("Dashboard de movilidad urbana")
-st.caption(
-    "Análisis de viajes, ingresos, operación, satisfacción e incidentes."
+
+# =========================================================
+# CLASES Y FUNCIONES DE DATAROBOT
+# =========================================================
+class DataRobotPredictionError(RuntimeError):
+    """Error controlado durante el proceso de predicción."""
+
+
+@dataclass(frozen=True)
+class DataRobotConfig:
+    api_key: str
+    deployment_id: str
+    host: str
+    timeout: int = DEFAULT_TIMEOUT_SECONDS
+
+    @property
+    def batch_predictions_url(self) -> str:
+        return f"{self.host.rstrip('/')}/api/v2/batchPredictions/"
+
+
+class DataRobotBatchClient:
+    def __init__(self, config: DataRobotConfig) -> None:
+        self.config = config
+        self.session = requests.Session()
+        self.session.headers.update(
+            {
+                "Authorization": f"Token {config.api_key}",
+                "User-Agent": "Streamlit-DataRobot-Batch-Prediction-App",
+            }
+        )
+
+    def _request(self, method: str, url: str, **kwargs: Any) -> requests.Response:
+        try:
+            response = self.session.request(
+                method,
+                url,
+                timeout=self.config.timeout,
+                **kwargs,
+            )
+        except requests.RequestException as exc:
+            raise DataRobotPredictionError(
+                f"No fue posible conectarse con DataRobot: {exc}"
+            ) from exc
+
+        if not response.ok:
+            detail = response.text[:1500]
+            raise DataRobotPredictionError(
+                f"DataRobot respondió con HTTP {response.status_code}: {detail}"
+            )
+        return response
+
+    def create_job(
+        self,
+        include_all_columns: bool,
+        include_prediction_status: bool,
+        max_explanations: int | None,
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "deploymentId": self.config.deployment_id,
+        }
+
+        if include_all_columns:
+            payload["passthroughColumnsSet"] = "all"
+        if include_prediction_status:
+            payload["includePredictionStatus"] = True
+        if max_explanations and max_explanations > 0:
+            payload["maxExplanations"] = max_explanations
+
+        response = self._request("POST", self.config.batch_predictions_url, json=payload)
+        return response.json()
+
+    def upload_csv(self, upload_url: str, csv_bytes: bytes) -> None:
+        headers = {
+            "Content-Type": "text/csv; encoding=utf-8",
+            "Content-Length": str(len(csv_bytes)),
+        }
+        self._request("PUT", upload_url, data=csv_bytes, headers=headers)
+
+    def get_job(self, job_url: str) -> dict[str, Any]:
+        return self._request("GET", job_url).json()
+
+    def download_results(self, download_url: str) -> bytes:
+        return self._request("GET", download_url).content
+
+    def abort_job(self, job_id: str) -> None:
+        abort_url = f"{self.config.batch_predictions_url}{job_id}/"
+        try:
+            self._request("DELETE", abort_url)
+        except DataRobotPredictionError:
+            pass
+
+    def predict(
+        self,
+        csv_bytes: bytes,
+        include_all_columns: bool,
+        include_prediction_status: bool,
+        max_explanations: int | None,
+        progress_bar: Any,
+        status_box: Any,
+    ) -> bytes:
+        job = self.create_job(
+            include_all_columns=include_all_columns,
+            include_prediction_status=include_prediction_status,
+            max_explanations=max_explanations,
+        )
+
+        job_id = job["id"]
+        links = job["links"]
+        job_url = links["self"]
+
+        try:
+            status_box.info("Trabajo creado. Cargando los datos en DataRobot...")
+            progress_bar.progress(5)
+            self.upload_csv(links["csvUpload"], csv_bytes)
+            progress_bar.progress(12)
+
+            while True:
+                job = self.get_job(job_url)
+                status = job.get("status", "UNKNOWN")
+
+                if status == "INITIALIZING":
+                    queue_position = job.get("queuePosition")
+                    message = "DataRobot está preparando el trabajo."
+                    if isinstance(queue_position, int) and queue_position > 0:
+                        message += f" Posición en cola: {queue_position}."
+                    status_box.info(message)
+                    progress_bar.progress(15)
+
+                elif status == "RUNNING":
+                    percentage = float(job.get("percentageCompleted", 0))
+                    scored_rows = int(job.get("scoredRows", 0))
+                    failed_rows = int(job.get("failedRows", 0))
+                    visible_progress = min(95, max(15, int(percentage)))
+                    progress_bar.progress(visible_progress)
+                    status_box.info(
+                        f"Procesando predicciones: {percentage:.0f}% · "
+                        f"Filas procesadas: {scored_rows:,} · Errores: {failed_rows:,}"
+                    )
+
+                elif status == "COMPLETED":
+                    progress_bar.progress(98)
+                    status_box.info("Predicciones completadas. Descargando resultados...")
+                    final_job = self.get_job(job_url)
+                    result = self.download_results(final_job["links"]["download"])
+                    progress_bar.progress(100)
+                    status_box.success("Predicciones generadas correctamente.")
+                    return result
+
+                elif status in {"FAILED", "ABORTED"}:
+                    details = job.get("statusDetails") or job.get("logs") or "Sin detalles."
+                    raise DataRobotPredictionError(
+                        f"El trabajo terminó con estado {status}: {details}"
+                    )
+
+                else:
+                    raise DataRobotPredictionError(
+                        f"DataRobot devolvió un estado no reconocido: {status}"
+                    )
+
+                time.sleep(POLL_INTERVAL_SECONDS)
+
+        except Exception:
+            self.abort_job(job_id)
+            raise
+
+
+# =========================================================
+# UTILIDADES
+# =========================================================
+def get_secret(name: str, default: str | None = None) -> str:
+    try:
+        value = st.secrets[name]
+    except (KeyError, FileNotFoundError):
+        value = default
+
+    if value is None or not str(value).strip():
+        raise DataRobotPredictionError(
+            f"Falta configurar el secreto '{name}' en Streamlit."
+        )
+    return str(value).strip()
+
+
+def read_csv_safely(file_bytes: bytes) -> tuple[pd.DataFrame, str]:
+    encodings = ("utf-8", "utf-8-sig", "latin-1")
+    last_error: Exception | None = None
+
+    for encoding in encodings:
+        try:
+            dataframe = pd.read_csv(io.BytesIO(file_bytes), encoding=encoding)
+            return dataframe, encoding
+        except Exception as exc:
+            last_error = exc
+
+    raise DataRobotPredictionError(
+        f"No fue posible leer el CSV. Verifica el separador, la codificación y su estructura. "
+        f"Detalle: {last_error}"
+    )
+
+
+def dataframe_from_result(result_bytes: bytes) -> pd.DataFrame | None:
+    try:
+        return pd.read_csv(io.BytesIO(result_bytes))
+    except Exception:
+        return None
+
+
+# =========================================================
+# INTERFAZ
+# =========================================================
+st.markdown(
+    """
+    <div class="hero">
+        <h1>Predicción inteligente con DataRobot</h1>
+        <p>
+            Carga un archivo CSV, envíalo al modelo desplegado en DataRobot y descarga
+            los resultados de predicción desde una interfaz clara y segura.
+        </p>
+    </div>
+    """,
+    unsafe_allow_html=True,
 )
 
-
-# ---------------------------------------------------------------------
-# Funciones auxiliares de presentación
-# ---------------------------------------------------------------------
-def formatear_moneda(valor: float) -> str:
-    return f"${valor:,.0f}".replace(",", ".")
-
-
-def formatear_numero(valor: float, decimales: int = 1) -> str:
-    texto = f"{valor:,.{decimales}f}"
-    return texto.replace(",", "X").replace(".", ",").replace("X", ".")
-
-
-@st.cache_data(show_spinner=False)
-def cargar_y_procesar_archivo(archivo) -> pd.DataFrame:
-    """Procesa el archivo subido y conserva el resultado en caché."""
-    return procesar_datos(archivo)
-
-
-@st.cache_data(show_spinner=False)
-def cargar_y_procesar_ruta(ruta: str) -> pd.DataFrame:
-    """Procesa un CSV almacenado junto a la aplicación."""
-    return procesar_datos(ruta)
-
-
-def obtener_archivo_local() -> Path | None:
-    candidatos = [
-        Path("movilidad.csv"),
-        Path("movilidad(1).csv"),
-        Path("data/movilidad.csv"),
-    ]
-    return next((ruta for ruta in candidatos if ruta.exists()), None)
-
-
-def grafico_sin_datos(mensaje: str = "No hay datos para este gráfico.") -> None:
-    st.info(mensaje)
-
-
-def mostrar_grafico(figura, **kwargs) -> None:
-    """Aplica una configuración interactiva uniforme a los gráficos."""
-    figura.update_layout(
-        font={"family": "Arial, sans-serif", "color": "#334155"},
-        title={"font": {"size": 19, "color": "#172033"}, "x": 0.02},
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        hoverlabel={"bgcolor": "#0F172A", "font_color": "#FFFFFF"},
-        margin={"l": 35, "r": 25, "t": 65, "b": 45},
-        transition={"duration": 350, "easing": "cubic-in-out"},
-    )
-    figura.update_xaxes(showgrid=True, gridcolor="rgba(148,163,184,.16)", zeroline=False)
-    figura.update_yaxes(showgrid=True, gridcolor="rgba(148,163,184,.16)", zeroline=False)
-    st.plotly_chart(
-        figura,
-        use_container_width=True,
-        theme=None,
-        config={
-            "displaylogo": False,
-            "responsive": True,
-            "scrollZoom": True,
-            "modeBarButtonsToRemove": ["lasso2d"],
-            "toImageButtonOptions": {
-                "format": "png",
-                "filename": "grafico_movilidad",
-                "height": 700,
-                "width": 1200,
-                "scale": 2,
-            },
-        },
-        **kwargs,
-    )
-
-
-# ---------------------------------------------------------------------
-# Carga de datos
-# ---------------------------------------------------------------------
 with st.sidebar:
-    st.header("Datos")
-    archivo_subido = st.file_uploader(
-        "Carga el archivo CSV",
-        type=["csv"],
-        help=(
-            "Debe contener las columnas originales del dataset de movilidad. "
-            "La limpieza se ejecuta automáticamente."
-        ),
+    st.title("Configuración")
+    st.caption("Las credenciales se obtienen desde los secretos de Streamlit.")
+
+    include_all_columns = st.checkbox(
+        "Conservar columnas originales",
+        value=True,
+        help="Agrega las columnas del archivo de entrada al resultado final.",
     )
+    include_prediction_status = st.checkbox(
+        "Incluir estado por fila",
+        value=True,
+        help="Agrega información de errores o estado para cada registro.",
+    )
+    request_explanations = st.checkbox(
+        "Solicitar explicaciones",
+        value=False,
+        help="Puede aumentar el tiempo de procesamiento y depende de la configuración del deployment.",
+    )
+    max_explanations = st.slider(
+        "Número de explicaciones",
+        min_value=1,
+        max_value=10,
+        value=3,
+        disabled=not request_explanations,
+    )
+
+    st.divider()
+    st.markdown("**Secretos requeridos**")
+    st.code(
+        'DATAROBOT_API_KEY = "..."\n'
+        'DATAROBOT_DEPLOYMENT_ID = "..."\n'
+        'DATAROBOT_HOST = "https://app.datarobot.com"',
+        language="toml",
+    )
+
+uploaded_file = st.file_uploader(
+    "Carga el archivo que deseas analizar",
+    type=["csv"],
+    help="El archivo debe contener exactamente las variables esperadas por el deployment.",
+)
+
+if uploaded_file is None:
+    st.info("Carga un archivo CSV para comenzar.")
+    st.stop()
+
+input_bytes = uploaded_file.getvalue()
 
 try:
-    if archivo_subido is not None:
-        df_original = pd.read_csv(archivo_subido)
-        archivo_subido.seek(0)
-        reporte_calidad = diagnosticar_datos(df_original)
-        df_trabajo = cargar_y_procesar_archivo(archivo_subido)
-        origen_datos = archivo_subido.name
+    input_df, detected_encoding = read_csv_safely(input_bytes)
+except DataRobotPredictionError as exc:
+    st.error(str(exc))
+    st.stop()
+
+if input_df.empty:
+    st.warning("El archivo está vacío. Agrega al menos una fila de datos.")
+    st.stop()
+
+metric_cols = st.columns(3)
+with metric_cols[0]:
+    st.markdown(
+        f'<div class="info-card"><div class="info-label">Registros</div>'
+        f'<div class="info-value">{len(input_df):,}</div></div>',
+        unsafe_allow_html=True,
+    )
+with metric_cols[1]:
+    st.markdown(
+        f'<div class="info-card"><div class="info-label">Variables</div>'
+        f'<div class="info-value">{len(input_df.columns):,}</div></div>',
+        unsafe_allow_html=True,
+    )
+with metric_cols[2]:
+    st.markdown(
+        f'<div class="info-card"><div class="info-label">Codificación</div>'
+        f'<div class="info-value">{detected_encoding}</div></div>',
+        unsafe_allow_html=True,
+    )
+
+st.subheader("Vista previa de los datos")
+st.dataframe(input_df.head(100), use_container_width=True, hide_index=True)
+st.caption(
+    "La vista previa muestra como máximo 100 filas. El archivo completo será enviado a DataRobot."
+)
+
+with st.expander("Revisar nombres de variables"):
+    st.write(list(input_df.columns))
+
+predict_button = st.button(
+    "Generar predicciones",
+    type="primary",
+    use_container_width=True,
+)
+
+if predict_button:
+    try:
+        config = DataRobotConfig(
+            api_key=get_secret("DATAROBOT_API_KEY"),
+            deployment_id=get_secret("DATAROBOT_DEPLOYMENT_ID"),
+            host=get_secret("DATAROBOT_HOST", "https://app.datarobot.com"),
+        )
+
+        # Se normaliza a UTF-8 para evitar problemas de codificación al subirlo.
+        normalized_csv = input_df.to_csv(index=False).encode("utf-8")
+
+        progress_bar = st.progress(0)
+        status_box = st.empty()
+        client = DataRobotBatchClient(config)
+
+        result_bytes = client.predict(
+            csv_bytes=normalized_csv,
+            include_all_columns=include_all_columns,
+            include_prediction_status=include_prediction_status,
+            max_explanations=max_explanations if request_explanations else None,
+            progress_bar=progress_bar,
+            status_box=status_box,
+        )
+
+        st.session_state["prediction_result"] = result_bytes
+        st.session_state["prediction_filename"] = (
+            f"predicciones_{uploaded_file.name.rsplit('.', 1)[0]}.csv"
+        )
+
+    except DataRobotPredictionError as exc:
+        st.error(str(exc))
+    except Exception as exc:
+        st.error(f"Ocurrió un error inesperado: {exc}")
+
+if "prediction_result" in st.session_state:
+    result_bytes = st.session_state["prediction_result"]
+    result_df = dataframe_from_result(result_bytes)
+
+    st.divider()
+    st.subheader("Resultados del modelo")
+
+    if result_df is not None:
+        result_metrics = st.columns(2)
+        result_metrics[0].metric("Filas resultantes", f"{len(result_df):,}")
+        result_metrics[1].metric("Columnas resultantes", f"{len(result_df.columns):,}")
+        st.dataframe(result_df.head(100), use_container_width=True, hide_index=True)
     else:
-        archivo_local = obtener_archivo_local()
-        if archivo_local is None:
-            st.warning(
-                "Carga el CSV desde la barra lateral o agrega "
-                "`movilidad.csv` junto a `app.py`."
-            )
-            st.stop()
-
-        df_original = pd.read_csv(archivo_local)
-        reporte_calidad = diagnosticar_datos(df_original)
-        df_trabajo = cargar_y_procesar_ruta(str(archivo_local))
-        origen_datos = archivo_local.name
-except (ValueError, KeyError, pd.errors.ParserError) as error:
-    st.error(f"No fue posible procesar el archivo: {error}")
-    st.stop()
-
-
-# ---------------------------------------------------------------------
-# Filtros
-# ---------------------------------------------------------------------
-with st.sidebar:
-    st.divider()
-    st.header("Filtros")
-
-    fecha_minima = df_trabajo[COL_FECHA].min().date()
-    fecha_maxima = df_trabajo[COL_FECHA].max().date()
-
-    fecha_inicio = st.date_input(
-        "Fecha inicial",
-        value=fecha_minima,
-        min_value=fecha_minima,
-        max_value=fecha_maxima,
-    )
-    fecha_fin = st.date_input(
-        "Fecha final",
-        value=fecha_maxima,
-        min_value=fecha_minima,
-        max_value=fecha_maxima,
-    )
-
-    if fecha_inicio > fecha_fin:
-        st.error("La fecha inicial no puede ser posterior a la fecha final.")
-        st.stop()
-
-    opciones_ciudad = sorted(df_trabajo[COL_CIUDAD].dropna().unique())
-    opciones_categoria = sorted(df_trabajo[COL_CATEGORIA].dropna().unique())
-    opciones_tipo_usuario = sorted(
-        df_trabajo[COL_TIPO_USUARIO].dropna().unique()
-    )
-    opciones_clima = sorted(df_trabajo[COL_CLIMA].dropna().unique())
-    opciones_pago = sorted(df_trabajo[COL_METODO_PAGO].dropna().unique())
-    opciones_incidente = sorted(df_trabajo[COL_INCIDENTE].dropna().unique())
-
-    ciudades = st.multiselect("Ciudad", opciones_ciudad)
-    categorias = st.multiselect("Tipo de vehículo", opciones_categoria)
-    tipos_usuario = st.multiselect(
-        "Tipo de usuario",
-        opciones_tipo_usuario,
-    )
-    climas = st.multiselect("Clima", opciones_clima)
-    metodos_pago = st.multiselect("Método de pago", opciones_pago)
-    incidentes = st.multiselect("Incidente", opciones_incidente)
-
-    st.divider()
-    st.caption(f"Fuente: {origen_datos}")
-
-df_filtrado = filtrar_datos(
-    df_trabajo,
-    fecha_inicio=fecha_inicio,
-    fecha_fin=fecha_fin,
-    ciudades=ciudades,
-    categorias=categorias,
-    tipos_usuario=tipos_usuario,
-    climas=climas,
-    metodos_pago=metodos_pago,
-    incidentes=incidentes,
-)
-
-if df_filtrado.empty:
-    st.warning("No hay registros que cumplan los filtros seleccionados.")
-    st.stop()
-
-
-# ---------------------------------------------------------------------
-# Indicadores
-# ---------------------------------------------------------------------
-indicadores = calcular_indicadores(df_filtrado)
-
-fila_kpi_1 = st.columns(4)
-fila_kpi_1[0].metric(
-    "Total de viajes",
-    f"{indicadores['total_viajes']:,}".replace(",", "."),
-)
-fila_kpi_1[1].metric(
-    "Ingresos totales",
-    formatear_moneda(indicadores["ingresos_totales"]),
-)
-fila_kpi_1[2].metric(
-    "Duración promedio",
-    f"{formatear_numero(indicadores['duracion_promedio'])} min",
-)
-fila_kpi_1[3].metric(
-    "Distancia promedio",
-    f"{formatear_numero(indicadores['distancia_promedio'], 2)} km",
-)
-
-fila_kpi_2 = st.columns(4)
-fila_kpi_2[0].metric(
-    "Satisfacción promedio",
-    f"{formatear_numero(indicadores['satisfaccion_promedio'], 2)} / 5",
-)
-fila_kpi_2[1].metric(
-    "Incidentes",
-    f"{indicadores['incidentes']:,}".replace(",", "."),
-)
-fila_kpi_2[2].metric(
-    "Tasa de incidentes",
-    f"{formatear_numero(indicadores['tasa_incidentes'], 2)} %",
-)
-fila_kpi_2[3].metric(
-    "Usuarios únicos",
-    f"{indicadores['usuarios_unicos']:,}".replace(",", "."),
-)
-
-
-# ---------------------------------------------------------------------
-# Dashboard
-# ---------------------------------------------------------------------
-tab_general, tab_tiempo, tab_operacion, tab_calidad = st.tabs(
-    [
-        "Resumen general",
-        "Comportamiento temporal",
-        "Operación e incidentes",
-        "Calidad y datos",
-    ]
-)
-
-
-with tab_general:
-    columna_1, columna_2 = st.columns(2)
-
-    with columna_1:
-        resumen_ciudad = generar_resumen(
-            df_filtrado,
-            COL_CIUDAD,
-            nombre_resultado="viajes",
+        st.warning(
+            "Las predicciones se generaron, pero no fue posible mostrar una vista previa. "
+            "Puedes descargar el archivo completo."
         )
-        figura_ciudad = px.bar(
-            resumen_ciudad,
-            x=COL_CIUDAD,
-            y="viajes",
-            title="Cantidad de viajes por ciudad",
-            text_auto=True,
-        )
-        figura_ciudad.update_layout(xaxis_title="", yaxis_title="Viajes")
-        mostrar_grafico(figura_ciudad)
 
-    with columna_2:
-        resumen_ingresos_ciudad = generar_resumen(
-            df_filtrado,
-            COL_CIUDAD,
-            metrica=COL_VALOR,
-            operacion="sum",
-            nombre_resultado="ingresos",
-        )
-        figura_ingresos = px.bar(
-            resumen_ingresos_ciudad,
-            x=COL_CIUDAD,
-            y="ingresos",
-            title="Ingresos por ciudad",
-            text_auto=".2s",
-        )
-        figura_ingresos.update_layout(
-            xaxis_title="",
-            yaxis_title="Ingresos",
-        )
-        mostrar_grafico(figura_ingresos)
-
-    columna_3, columna_4 = st.columns(2)
-
-    with columna_3:
-        resumen_categoria = generar_resumen(
-            df_filtrado,
-            COL_CATEGORIA,
-            nombre_resultado="viajes",
-        )
-        figura_categoria = px.pie(
-            resumen_categoria,
-            names=COL_CATEGORIA,
-            values="viajes",
-            hole=0.45,
-            title="Participación por tipo de vehículo",
-        )
-        mostrar_grafico(figura_categoria)
-
-    with columna_4:
-        resumen_pago = generar_resumen(
-            df_filtrado,
-            COL_METODO_PAGO,
-            nombre_resultado="viajes",
-        )
-        figura_pago = px.bar(
-            resumen_pago,
-            x="viajes",
-            y=COL_METODO_PAGO,
-            orientation="h",
-            title="Métodos de pago",
-            text_auto=True,
-        )
-        figura_pago.update_layout(
-            xaxis_title="Viajes",
-            yaxis_title="",
-            yaxis={"categoryorder": "total ascending"},
-        )
-        mostrar_grafico(figura_pago)
-
-    columna_5, columna_6 = st.columns(2)
-
-    with columna_5:
-        figura_edad = px.histogram(
-            df_filtrado,
-            x=COL_EDAD,
-            nbins=15,
-            title="Distribución de edades",
-        )
-        figura_edad.update_layout(
-            xaxis_title="Edad",
-            yaxis_title="Frecuencia",
-        )
-        mostrar_grafico(figura_edad)
-
-    with columna_6:
-        resumen_satisfaccion = (
-            df_filtrado.groupby(COL_SATISFACCION, observed=False)
-            .size()
-            .rename("viajes")
-            .reset_index()
-            .sort_values(COL_SATISFACCION)
-        )
-        figura_satisfaccion = px.bar(
-            resumen_satisfaccion,
-            x=COL_SATISFACCION,
-            y="viajes",
-            title="Distribución de la satisfacción",
-            text_auto=True,
-        )
-        figura_satisfaccion.update_layout(
-            xaxis_title="Satisfacción",
-            yaxis_title="Viajes",
-        )
-        mostrar_grafico(figura_satisfaccion)
-
-
-with tab_tiempo:
-    resumen_diario = (
-        df_filtrado.assign(
-            fecha_grafico=df_filtrado[COL_FECHA].dt.floor("D")
-        )
-        .groupby("fecha_grafico", observed=False)
-        .agg(
-            viajes=(COL_FECHA, "size"),
-            ingresos=(COL_VALOR, "sum"),
-        )
-        .reset_index()
-        .sort_values("fecha_grafico")
-    )
-
-    figura_tendencia = px.line(
-        resumen_diario,
-        x="fecha_grafico",
-        y="viajes",
-        title="Evolución diaria de los viajes",
-        markers=True,
-    )
-    figura_tendencia.update_layout(
-        xaxis_title="Fecha",
-        yaxis_title="Viajes",
-    )
-    mostrar_grafico(figura_tendencia)
-
-    columna_1, columna_2 = st.columns(2)
-
-    with columna_1:
-        resumen_mes = (
-            df_filtrado.groupby(
-                ["mes_numero", "mes"],
-                observed=False,
-            )
-            .agg(
-                viajes=(COL_FECHA, "size"),
-                ingresos=(COL_VALOR, "sum"),
-            )
-            .reset_index()
-            .sort_values("mes_numero")
-        )
-        figura_mes = px.line(
-            resumen_mes,
-            x="mes",
-            y="ingresos",
-            markers=True,
-            title="Ingresos mensuales",
-        )
-        figura_mes.update_layout(
-            xaxis_title="",
-            yaxis_title="Ingresos",
-        )
-        mostrar_grafico(figura_mes)
-
-    with columna_2:
-        resumen_hora = (
-            df_filtrado.groupby("hora", observed=False)
-            .size()
-            .rename("viajes")
-            .reset_index()
-            .sort_values("hora")
-        )
-        figura_hora = px.area(
-            resumen_hora,
-            x="hora",
-            y="viajes",
-            title="Demanda por hora del día",
-        )
-        figura_hora.update_layout(
-            xaxis_title="Hora",
-            yaxis_title="Viajes",
-        )
-        mostrar_grafico(figura_hora)
-
-    tabla_calor = (
-        df_filtrado.groupby(
-            ["dia_semana", "hora"],
-            observed=False,
-        )
-        .size()
-        .rename("viajes")
-        .reset_index()
-        .pivot(index="dia_semana", columns="hora", values="viajes")
-        .fillna(0)
-    )
-
-    figura_calor = px.imshow(
-        tabla_calor,
-        aspect="auto",
-        labels={
-            "x": "Hora",
-            "y": "Día de la semana",
-            "color": "Viajes",
-        },
-        title="Demanda por día y hora",
-    )
-    mostrar_grafico(figura_calor)
-
-
-with tab_operacion:
-    columna_1, columna_2 = st.columns(2)
-
-    with columna_1:
-        resumen_origen = generar_resumen(
-            df_filtrado,
-            COL_ORIGEN,
-            nombre_resultado="viajes",
-        ).head(10)
-        figura_origen = px.bar(
-            resumen_origen.sort_values("viajes"),
-            x="viajes",
-            y=COL_ORIGEN,
-            orientation="h",
-            title="Top 10 estaciones de origen",
-            text_auto=True,
-        )
-        figura_origen.update_layout(
-            xaxis_title="Viajes",
-            yaxis_title="",
-        )
-        mostrar_grafico(figura_origen)
-
-    with columna_2:
-        resumen_rutas = generar_resumen(
-            df_filtrado,
-            "ruta",
-            nombre_resultado="viajes",
-        ).head(10)
-        figura_rutas = px.bar(
-            resumen_rutas.sort_values("viajes"),
-            x="viajes",
-            y="ruta",
-            orientation="h",
-            title="Top 10 rutas",
-            text_auto=True,
-        )
-        figura_rutas.update_layout(
-            xaxis_title="Viajes",
-            yaxis_title="",
-        )
-        mostrar_grafico(figura_rutas)
-
-    figura_relacion = px.scatter(
-        df_filtrado,
-        x=COL_DISTANCIA,
-        y=COL_DURACION,
-        color=COL_CATEGORIA,
-        size=COL_VALOR,
-        hover_data=[
-            COL_CIUDAD,
-            COL_ORIGEN,
-            COL_DESTINO,
-            "velocidad_promedio_kmh",
-        ],
-        title="Relación entre distancia y duración",
-        opacity=0.65,
-    )
-    figura_relacion.update_layout(
-        xaxis_title="Distancia (km)",
-        yaxis_title="Duración (min)",
-    )
-    mostrar_grafico(figura_relacion)
-
-    columna_3, columna_4 = st.columns(2)
-
-    with columna_3:
-        resumen_incidentes_clima = (
-            df_filtrado.groupby(COL_CLIMA, observed=False)
-            .agg(
-                viajes=(COL_INCIDENTE, "size"),
-                incidentes=("tiene_incidente", "sum"),
-            )
-            .reset_index()
-        )
-        resumen_incidentes_clima["tasa_incidentes"] = (
-            resumen_incidentes_clima["incidentes"]
-            / resumen_incidentes_clima["viajes"]
-            * 100
-        )
-        figura_incidentes_clima = px.bar(
-            resumen_incidentes_clima.sort_values(
-                "tasa_incidentes",
-                ascending=False,
-            ),
-            x=COL_CLIMA,
-            y="tasa_incidentes",
-            title="Tasa de incidentes por clima",
-            text_auto=".2f",
-        )
-        figura_incidentes_clima.update_layout(
-            xaxis_title="",
-            yaxis_title="Tasa de incidentes (%)",
-        )
-        mostrar_grafico(figura_incidentes_clima)
-
-    with columna_4:
-        resumen_incidentes_categoria = (
-            df_filtrado.groupby(COL_CATEGORIA, observed=False)
-            .agg(
-                viajes=(COL_INCIDENTE, "size"),
-                incidentes=("tiene_incidente", "sum"),
-            )
-            .reset_index()
-        )
-        resumen_incidentes_categoria["tasa_incidentes"] = (
-            resumen_incidentes_categoria["incidentes"]
-            / resumen_incidentes_categoria["viajes"]
-            * 100
-        )
-        figura_incidentes_categoria = px.bar(
-            resumen_incidentes_categoria.sort_values(
-                "tasa_incidentes",
-                ascending=False,
-            ),
-            x=COL_CATEGORIA,
-            y="tasa_incidentes",
-            title="Tasa de incidentes por vehículo",
-            text_auto=".2f",
-        )
-        figura_incidentes_categoria.update_layout(
-            xaxis_title="",
-            yaxis_title="Tasa de incidentes (%)",
-        )
-        mostrar_grafico(figura_incidentes_categoria)
-
-    columna_5, columna_6 = st.columns(2)
-
-    with columna_5:
-        figura_temperatura = px.box(
-            df_filtrado,
-            x=COL_CIUDAD,
-            y=COL_TEMPERATURA,
-            title="Temperatura por ciudad",
-        )
-        figura_temperatura.update_layout(
-            xaxis_title="",
-            yaxis_title="Temperatura (°C)",
-        )
-        mostrar_grafico(figura_temperatura)
-
-    with columna_6:
-        resumen_satisfaccion_ciudad = generar_resumen(
-            df_filtrado,
-            COL_CIUDAD,
-            metrica=COL_SATISFACCION,
-            operacion="mean",
-            nombre_resultado="satisfaccion_promedio",
-        )
-        figura_satisfaccion_ciudad = px.bar(
-            resumen_satisfaccion_ciudad,
-            x=COL_CIUDAD,
-            y="satisfaccion_promedio",
-            title="Satisfacción promedio por ciudad",
-            text_auto=".2f",
-        )
-        figura_satisfaccion_ciudad.update_layout(
-            xaxis_title="",
-            yaxis_title="Satisfacción promedio",
-            yaxis_range=[0, 5],
-        )
-        mostrar_grafico(figura_satisfaccion_ciudad)
-
-
-with tab_calidad:
-    st.subheader("Diagnóstico del archivo original")
-
-    columna_1, columna_2, columna_3, columna_4 = st.columns(4)
-    columna_1.metric("Filas originales", reporte_calidad["filas"])
-    columna_2.metric("Columnas", reporte_calidad["columnas"])
-    columna_3.metric(
-        "Duplicados completos",
-        reporte_calidad["duplicados_completos"],
-    )
-    columna_4.metric(
-        "ID duplicados",
-        reporte_calidad["ids_duplicados"],
-    )
-
-    st.dataframe(
-        reporte_calidad["resumen_columnas"],
-        use_container_width=True,
-        hide_index=True,
-    )
-
-    st.subheader("Datos procesados y filtrados")
-    columnas_visibles = [
-        COL_FECHA,
-        COL_CIUDAD,
-        COL_ORIGEN,
-        COL_DESTINO,
-        COL_USUARIO,
-        COL_CATEGORIA,
-        COL_DURACION,
-        COL_DISTANCIA,
-        COL_VALOR,
-        COL_CLIMA,
-        COL_SATISFACCION,
-        COL_INCIDENTE,
-    ]
-    st.dataframe(
-        df_filtrado[columnas_visibles],
-        use_container_width=True,
-        hide_index=True,
-    )
-
-    csv_filtrado = df_filtrado.to_csv(index=False).encode("utf-8-sig")
     st.download_button(
-        "Descargar datos procesados",
-        data=csv_filtrado,
-        file_name="movilidad_procesada.csv",
+        label="Descargar predicciones en CSV",
+        data=result_bytes,
+        file_name=st.session_state.get("prediction_filename", "predicciones.csv"),
         mime="text/csv",
+        use_container_width=True,
     )
 
-    with st.expander("Variables creadas durante el procesamiento"):
-        st.write(
-            [
-                "fecha",
-                "anio",
-                "mes_numero",
-                "mes",
-                "dia_mes",
-                "dia_semana",
-                "hora",
-                "franja_horaria",
-                "es_fin_semana",
-                "es_hora_pico",
-                "velocidad_promedio_kmh",
-                "descuento_valor",
-                "ruta",
-                "tiene_incidente",
-                "segmento_distancia",
-                "segmento_duracion",
-                "es_atipico_duracion",
-                "es_atipico_distancia",
-                "valor_estimado",
-                "diferencia_valor",
-                "valor_consistente",
-                "indicadores de imputación",
-            ]
-        )
+st.markdown(
+    '<p class="small-note">La aplicación no muestra ni almacena la API Key. '
+    'Las credenciales se leen directamente desde <code>st.secrets</code>.</p>',
+    unsafe_allow_html=True,
+)
